@@ -1,0 +1,52 @@
+# Stage 1: Build production assets
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache curl
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+
+RUN npm run build
+
+# Stage 2: Production runner
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+RUN apk add --no-cache curl
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=5173
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+
+COPY package*.json ./
+RUN npm install --omit=dev
+
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.* ./
+
+USER nextjs
+
+EXPOSE 5173
+
+# L-17: Health check for frontend container
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://127.0.0.1:5173/ || exit 1
+
+# M-19: Production server instead of npm run dev
+CMD ["npm", "run", "start"]
+

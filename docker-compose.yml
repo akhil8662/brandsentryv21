@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brandsentry-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - AWS_SECRETS_MANAGER_SECRET_NAME=${AWS_SECRETS_MANAGER_SECRET_NAME:-BrandSentry-SECRETS}
+      - AWS_REGION=${AWS_REGION:-ap-south-1}
+      - APP_ENV=${APP_ENV:-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://websiteip:5173}
+    # M-20: Container health checks
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:8000/health" ]
+
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://websiteip:8000}
+    container_name: brandsentry-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://websiteip:8000}
+      - NODE_ENV=${NODE_ENV:-production}
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+    # M-20: Frontend container health check
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://127.0.0.1:5173/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
